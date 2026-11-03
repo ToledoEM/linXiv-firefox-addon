@@ -5,11 +5,11 @@
   "license": "Apache-2.0",
   "type": "module",
   "scripts": {
-    "build": "vite build",
+    "build": "vite build && vite build --config vite.content.config.ts",
     "test": "node --test \"src/**/*.test.ts\"",
     "typecheck": "tsc",
     "lint": "pnpm build && web-ext lint --source-dir dist",
-    "run": "pnpm build && web-ext run --source-dir dist --firefox-profile Test-linxiv",
+    "run": "pnpm build && web-ext run --source-dir dist",
     "package": "pnpm build && web-ext build --source-dir dist --overwrite-dest"
   },
   "dependencies": {
@@ -22,6 +22,7 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
+    "linkedom": "0.18.13",
     "typescript": "^7.0.2",
     "vite": "^8.3.3",
     "web-ext": "^10.8.0"
