@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
-import { buildBibtex } from "./bibtex.ts";
+import { originPattern } from "./backends/http.ts";
+import { createBackend } from "./backends/index.ts";
+import type { SaveResult, Settings } from "./backends/types.ts";
 import { extractFromTab, toPreview } from "./extractors/index.ts";
 import { fillBlanks, identifyPage, lookupFields } from "./extractors/lookup.ts";
 import { displayName } from "./extractors/normalize.ts";
+import { loadSettings } from "./settings.ts";
 import type { ClipCandidate, ClipPreview, PageExtraction } from "./types";
 
 import "./popup.css";
@@ -71,15 +74,9 @@ function missingFields(preview: ClipPreview): string[] {
   return missing;
 }
 
-function deepLinkFor(previews: ClipPreview[]): string {
-  const [only] = previews;
-
-  // A PDF with no identifier: let linXiv read metadata from the file itself.
-  if (previews.length === 1 && only.target.kind === "pdf") {
-    return `linxiv-clip://add?input=${encodeURIComponent(only.target.value)}`;
-  }
-
-  return `linxiv-clip://add?bibtex=${encodeURIComponent(previews.map(buildBibtex).join("\n"))}`;
+function describeResult(result: SaveResult): string {
+  const saved = result.ids.length === 1 ? result.ids[0] : `${result.ids.length} items`;
+  return `Saved ${saved}. Attach the PDF in linXiv.`;
 }
 
 function Popup() {
@@ -88,6 +85,8 @@ function Popup() {
   const [readError, setReadError] = useState<string>();
   const [selected, setSelected] = useState<Set<string>>(new Set([PAGE_ID]));
   const [tabId, setTabId] = useState<number>();
+  const [settings, setSettings] = useState<Settings>();
+  const [result, setResult] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -102,6 +101,7 @@ function Popup() {
         }
 
         setTabId(tab.id);
+        setSettings(await loadSettings());
         const extraction = await readTab(tab);
         setReadError(extraction.readError);
 
@@ -127,11 +127,13 @@ function Popup() {
   }
 
   async function handleSave() {
-    if (!preview || tabId === undefined || selected.size === 0) {
+    if (!preview || !settings || tabId === undefined || selected.size === 0) {
       return;
     }
 
     setSaving(true);
+    setError("");
+    setResult("");
 
     const picked = candidates.filter((candidate) => selected.has(candidate.id));
     const items = await Promise.all(
@@ -143,9 +145,29 @@ function Popup() {
     );
     const previews = selected.has(PAGE_ID) ? [preview, ...items] : items;
 
-    // Firefox won't hand a custom scheme to the OS from the popup itself.
-    await chrome.tabs.update(tabId, { url: deepLinkFor(previews) });
-    window.close();
+    try {
+      if (settings.kind !== "desktop") {
+        const allowed = await chrome.permissions.contains({ origins: [originPattern(settings.baseUrl)] });
+        if (!allowed) {
+          throw new Error("Firefox hasn't been given access to your server. Use Test connection in Settings.");
+        }
+      }
+
+      // Firefox won't hand a custom scheme to the OS from the popup itself.
+      const backend = createBackend(settings, (url) => chrome.tabs.update(tabId, { url }));
+      const saved = await backend.save(previews);
+
+      if (saved.status === "sent") {
+        window.close();
+        return;
+      }
+
+      setResult(describeResult(saved));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (loading) {
@@ -156,7 +178,7 @@ function Popup() {
     );
   }
 
-  if (error || !preview) {
+  if (!preview) {
     return (
       <main className="popup">
         <h1>linXiv</h1>
@@ -225,6 +247,16 @@ function Popup() {
       >
         {saving ? "Saving…" : "Save to linXiv"}
       </button>
+
+      {result && <p className="saved ok">{result}</p>}
+      {error && <p className="error">{error}</p>}
+
+      <p className="muted">
+        Saving to {settings?.kind === "headless" ? "linxiv-headless" : settings?.kind === "web" ? "linXiv-web" : "the desktop app"}.{" "}
+        <button className="link-button" type="button" onClick={() => void chrome.runtime.openOptionsPage()}>
+          Settings
+        </button>
+      </p>
     </main>
   );
 }
