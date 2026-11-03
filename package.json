@@ -8,9 +8,9 @@
     "build": "vite build",
     "test": "node --test \"src/**/*.test.ts\"",
     "typecheck": "tsc",
-    "lint": "pnpm build && web-ext lint --source-dir dist",
-    "run": "pnpm build && web-ext run --source-dir dist --firefox-profile Test-linxiv",
-    "package": "pnpm build && web-ext build --source-dir dist --overwrite-dest"
+    "lint": "pnpm build && pnpm dlx web-ext@10.8.0 lint --source-dir dist",
+    "run": "pnpm build && pnpm dlx web-ext@10.8.0 run --source-dir dist",
+    "package": "pnpm build && pnpm dlx web-ext@10.8.0 build --source-dir dist --overwrite-dest"
   },
   "dependencies": {
     "react": "^19.3.0",
@@ -23,8 +23,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "typescript": "^7.0.2",
-    "vite": "^8.3.3",
-    "web-ext": "^10.8.0"
+    "vite": "^8.3.3"
   },
   "packageManager": "pnpm@10.33.0"
 }
