@@ -8,10 +8,10 @@ import { loadSettings, saveSettings } from "./settings.ts";
 
 import "./popup.css";
 
-const LABELS: Record<BackendKind, string> = {
-  desktop: "linXiv desktop app, on this computer",
-  headless: "linxiv-headless server",
-  web: "linXiv-web server",
+const LABELS: Record<BackendKind, { name: string; hint: string }> = {
+  desktop: { name: "linXiv desktop app", hint: "On this computer. Saves through a linxiv-clip:// link." },
+  headless: { name: "linxiv-headless", hint: "Your server, with a token." },
+  web: { name: "linXiv-web", hint: "Your server. Doesn't accept the addon yet." },
 };
 
 function Options() {
@@ -59,23 +59,35 @@ function Options() {
   const isServer = settings.kind !== "desktop";
 
   return (
-    <main className="popup options">
-      <h1 className="brand">linXiv Web Clipper</h1>
+    <main className="settings">
+      <header className="settings-header">
+        <h1>linXiv Web Clipper</h1>
+        <p>Settings</p>
+      </header>
 
-      <label className="field">
-        <span>Save to</span>
-        <select value={settings.kind} onChange={(event) => chooseKind(event.target.value as BackendKind)}>
-          {(Object.keys(LABELS) as BackendKind[]).map((kind) => (
-            <option key={kind} value={kind}>
-              {LABELS[kind]}
-            </option>
-          ))}
-        </select>
-      </label>
+      <fieldset className="settings-card backend-group">
+        <legend>Save to</legend>
+
+        {(Object.keys(LABELS) as BackendKind[]).map((kind) => (
+          <label className="backend-option" key={kind}>
+            <input
+              type="radio"
+              name="backend"
+              value={kind}
+              checked={settings.kind === kind}
+              onChange={() => chooseKind(kind)}
+            />
+            <span>
+              <strong>{LABELS[kind].name}</strong>
+              <small>{LABELS[kind].hint}</small>
+            </span>
+          </label>
+        ))}
+      </fieldset>
 
       {isServer && (
-        <>
-          <label className="field">
+        <section className="settings-card">
+          <label className="settings-field">
             <span>Server address</span>
             <input
               type="url"
@@ -85,7 +97,7 @@ function Options() {
             />
           </label>
 
-          <label className="field">
+          <label className="settings-field">
             <span>Token</span>
             <input
               type="password"
@@ -93,22 +105,59 @@ function Options() {
               value={settings.token}
               onChange={(event) => update({ token: event.target.value })}
             />
+            <small>The token is kept unencrypted in this Firefox profile.</small>
           </label>
 
-          <p className="muted">The token is kept unencrypted in this Firefox profile.</p>
-        </>
+          <div className="token-help">
+            <h2>How to get a token</h2>
+
+            {settings.kind === "headless" ? (
+              <>
+                <p>
+                  linxiv-headless doesn't issue tokens. If <code>LINXIV_API_TOKEN</code> is already set on the server,
+                  use that value. Otherwise:
+                </p>
+                <ol>
+                  <li>
+                    Generate one with <code>openssl rand -hex 32</code>.
+                  </li>
+                  <li>
+                    Set it as <code>LINXIV_API_TOKEN</code> in the server's environment and restart the server.
+                  </li>
+                  <li>Paste the same value above and click Test connection.</li>
+                </ol>
+                <p>A server on 127.0.0.1 with no token set can leave this empty.</p>
+              </>
+            ) : (
+              <>
+                <ol>
+                  <li>Sign in to linXiv-web and open Settings, then Library.</li>
+                  <li>Under Browser add-on, create a token. It's shown only once.</li>
+                  <li>Paste it above.</li>
+                </ol>
+                <p>Only linXiv-web versions with the Browser add-on card can do this, and saving from the addon doesn't work yet.</p>
+              </>
+            )}
+          </div>
+        </section>
       )}
 
-      <button
-        className="save-button"
-        type="button"
-        disabled={testing || (isServer && !settings.baseUrl)}
-        onClick={() => void handleTest()}
-      >
-        {testing ? "Testing…" : "Test connection"}
-      </button>
+      <div className="settings-actions">
+        <button
+          className="settings-button"
+          type="button"
+          disabled={testing || (isServer && !settings.baseUrl)}
+          onClick={() => void handleTest()}
+        >
+          {testing ? "Testing…" : "Test connection"}
+        </button>
+      </div>
 
-      {probe && <p className={probe.ok ? "ok" : "error"}>{probe.message}</p>}
+      {probe && (
+        <p className={`settings-status ${probe.ok ? "is-ok" : "is-error"}`} role="status">
+          {probe.message}
+        </p>
+      )}
     </main>
   );
 }
