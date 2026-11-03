@@ -1,5 +1,6 @@
-export function textToBase64(text: string): string {
-  const bytes = new TextEncoder().encode(text);
+export const MAX_PDF_BYTES = 100 * 1024 * 1024;
+
+export function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
 
   // In chunks: spreading a large array into one call overflows the stack.
@@ -8,4 +9,12 @@ export function textToBase64(text: string): string {
   }
 
   return btoa(binary);
+}
+
+export function textToBase64(text: string): string {
+  return bytesToBase64(new TextEncoder().encode(text));
+}
+
+export function isPdf(bytes: Uint8Array): boolean {
+  return String.fromCharCode(...bytes.subarray(0, 5)) === "%PDF-";
 }

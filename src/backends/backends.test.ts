@@ -7,6 +7,7 @@ import { textToBase64 } from "./bytes.ts";
 import { deepLinkFor, desktopBackend } from "./desktop.ts";
 import { headlessBackend } from "./headless.ts";
 import { baseOf, originPattern, type Fetcher } from "./http.ts";
+import { savePdfTab } from "../pdfTab.ts";
 import { BackendError } from "./types.ts";
 import { webBackend } from "./web.ts";
 
@@ -141,6 +142,59 @@ test("desktop: one bibtex link", async () => {
 test("base64 keeps non-ASCII text", () => {
   assert.equal(decode(textToBase64("Schrödinger")), "Schrödinger");
   assert.equal(decode(textToBase64("x".repeat(200_000))).length, 200_000);
+});
+
+const PDF_BYTES = new TextEncoder().encode("%PDF-1.4 body");
+const SIGNED = "https://pdf.example/x/main.pdf?X-Amz-Expires=300&X-Amz-Security-Token=secret";
+const answers = (body: Uint8Array | string, status = 200) =>
+  (async () => new Response(body as BodyInit, { status })) as unknown as typeof fetch;
+
+test("PDF tab, headless: bytes go to import, and the signed link doesn't", async () => {
+  const { calls, fetcher } = server({ "POST /api/papers/import/pdf": () => json({ source_id: "doi:10.1/x", title: "From the file" }) });
+
+  const outcome = await savePdfTab(headlessBackend("http://h", "t", fetcher), SIGNED, answers(PDF_BYTES));
+
+  assert.deepEqual(outcome, { kind: "saved", id: "doi:10.1/x", title: "From the file" });
+  const body = JSON.parse(calls[0].body as string);
+  assert.equal(decode(body.file_b64), "%PDF-1.4 body");
+  assert.equal(body.filename, "main.pdf");
+  assert.equal(String(calls[0].body).includes("secret"), false);
+});
+
+test("PDF tab, web: multipart file with a .pdf name", async () => {
+  const { calls, fetcher } = server({ "POST /api/pdfs/import": () => json({ source_id: "local:a", title: "T" }) });
+
+  const outcome = await savePdfTab(webBackend("http://w", "t", fetcher), "https://arxiv.org/pdf/1706.03762", answers(PDF_BYTES));
+
+  assert.deepEqual(outcome, { kind: "saved", id: "local:a", title: "T" });
+  const file = (calls[0].body as FormData).get("file") as File;
+  assert.equal(file.name, "1706.03762.pdf");
+  assert.equal(await file.text(), "%PDF-1.4 body");
+});
+
+test("PDF tab, desktop: URL handed over, nothing fetched", async () => {
+  const opened: string[] = [];
+  const noFetch = (async () => {
+    throw new Error("should not fetch");
+  }) as unknown as typeof fetch;
+
+  const backend = desktopBackend(async (url) => opened.push(url));
+
+  assert.deepEqual(await savePdfTab(backend, "https://x.example/a.pdf", noFetch), { kind: "sent" });
+  assert.equal(opened[0], `linxiv-clip://add?input=${encodeURIComponent("https://x.example/a.pdf")}`);
+  assert.deepEqual(await savePdfTab(backend, "https://arxiv.org/pdf/1706.03762", noFetch), { kind: "not-pdf" });
+});
+
+test("PDF tab: a non-PDF falls back, an expired link says so, a blocked fetch asks", async () => {
+  const backend = headlessBackend("http://h", "t", server({}).fetcher);
+
+  assert.deepEqual(await savePdfTab(backend, SIGNED, answers("<html>")), { kind: "not-pdf" });
+  await assert.rejects(savePdfTab(backend, SIGNED, answers("gone", 403)), /may have expired/);
+
+  const blocked = (async () => {
+    throw new TypeError("NetworkError");
+  }) as unknown as typeof fetch;
+  assert.deepEqual(await savePdfTab(backend, SIGNED, blocked), { kind: "needs-access" });
 });
 
 test("addresses", () => {

@@ -1,5 +1,5 @@
 import { buildBibtex } from "../bibtex.ts";
-import { textToBase64 } from "./bytes.ts";
+import { bytesToBase64, textToBase64 } from "./bytes.ts";
 import { baseOf, detail, request, type Fetcher } from "./http.ts";
 import { BackendError, type Backend, type ProbeResult } from "./types.ts";
 
@@ -17,6 +17,8 @@ export function headlessBackend(baseUrl: string, token: string, fetcher: Fetcher
   }
 
   return {
+    pdfTransport: "bytes",
+
     probe: async (): Promise<ProbeResult> => {
       try {
         const response = await call("/api/status");
@@ -56,6 +58,21 @@ export function headlessBackend(baseUrl: string, token: string, fetcher: Fetcher
       }
 
       return { status: "saved", ids: imported.source_ids };
+    },
+
+    savePdf: async (pdf) => {
+      const response = await call("/api/papers/import/pdf", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ file_b64: bytesToBase64(pdf.bytes ?? new Uint8Array()), filename: pdf.filename }),
+      });
+
+      if (!response.ok) {
+        throw new BackendError(`linxiv-headless: ${await detail(response)}`);
+      }
+
+      const imported = (await response.json()) as { source_id?: string; title?: string };
+      return { status: "saved", id: imported.source_id, title: imported.title };
     },
   };
 }
