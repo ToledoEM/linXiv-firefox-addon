@@ -1,0 +1,43 @@
+# Dev notes: plans, Status Bank files (CLAUDE-*.md), Claude Code config
+discovery/
+.claude/
+CLAUDE.md
+CLAUDE-*.md
+*.original.md
+
+# Local dev data (bind mounts), Docker test runs
+.dev/
+.env
+.env.*
+!.env.example
+
+# Node
+node_modules/
+*.tsbuildinfo
+*.log
+.pnpm-store/
+coverage/
+
+# Extension build output and packages
+dist/
+web-ext-artifacts/
+.web-extension-id
+*.xpi
+
+# Papers: never commit downloaded PDFs
+*.pdf
+
+# OS and editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.zed/
+*.swp
+
+# Double safety
+*.pem
+*.key
+*.p12
+credentials*
+secrets*

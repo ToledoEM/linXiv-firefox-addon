@@ -1,0 +1,30 @@
+{
+  "name": "linxiv-firefox-addon",
+  "private": true,
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "test": "node --test \"src/**/*.test.ts\"",
+    "typecheck": "tsc",
+    "lint": "pnpm build && web-ext lint --source-dir dist",
+    "run": "pnpm build && web-ext run --source-dir dist --firefox-profile Test-linxiv",
+    "package": "pnpm build && web-ext build --source-dir dist --overwrite-dest"
+  },
+  "dependencies": {
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.3.4",
+    "@types/node": "^26.6.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.3",
+    "web-ext": "^10.8.0"
+  },
+  "packageManager": "pnpm@10.33.0"
+}
