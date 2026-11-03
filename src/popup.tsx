@@ -7,6 +7,7 @@ import type { SaveResult, Settings } from "./backends/types.ts";
 import { extractFromTab, toPreview } from "./extractors/index.ts";
 import { fillBlanks, identifyPage, lookupFields } from "./extractors/lookup.ts";
 import { displayName } from "./extractors/normalize.ts";
+import { savePdfTab } from "./pdfTab.ts";
 import { loadSettings } from "./settings.ts";
 import type { ClipCandidate, ClipPreview, PageExtraction } from "./types";
 
@@ -55,7 +56,7 @@ async function readTab(tab: chrome.tabs.Tab): Promise<PageExtraction> {
 
   // Expected on the PDF viewer and about: pages, where the tab itself is the source.
   const expected = /missing host permission/i.test(readError);
-  return { ...extractFromTab(url, tab.title), readError: expected ? undefined : readError };
+  return { ...extractFromTab(url, tab.title), readError: expected ? undefined : readError, blocked: expected };
 }
 
 async function enrich(preview: ClipPreview): Promise<ClipPreview> {
@@ -79,10 +80,16 @@ function describeResult(result: SaveResult): string {
   return `Saved ${saved}. Attach the PDF in linXiv.`;
 }
 
+function describeAccess(url: string): string {
+  return `Firefox needs your permission to read this PDF from ${new URL(url).hostname}.`;
+}
+
 function Popup() {
   const [preview, setPreview] = useState<ClipPreview | null>(null);
   const [candidates, setCandidates] = useState<ClipCandidate[]>([]);
   const [readError, setReadError] = useState<string>();
+  const [pdfTabUrl, setPdfTabUrl] = useState<string>();
+  const [needsAccess, setNeedsAccess] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set([PAGE_ID]));
   const [tabId, setTabId] = useState<number>();
   const [settings, setSettings] = useState<Settings>();
@@ -104,6 +111,13 @@ function Popup() {
         setSettings(await loadSettings());
         const extraction = await readTab(tab);
         setReadError(extraction.readError);
+
+        // A full-page PDF: the backend reads the metadata from the file, so no lookup.
+        if (extraction.blocked && tab.url && /^https?:/.test(tab.url)) {
+          setPdfTabUrl(tab.url);
+          setPreview(extraction.preview);
+          return;
+        }
 
         const identified = await identifyPage(extraction.preview, extraction.candidates);
         setCandidates(identified ? [] : extraction.candidates);
@@ -155,6 +169,30 @@ function Popup() {
 
       // Firefox won't hand a custom scheme to the OS from the popup itself.
       const backend = createBackend(settings, (url) => chrome.tabs.update(tabId, { url }));
+
+      if (pdfTabUrl) {
+        setNeedsAccess(false);
+        const outcome = await savePdfTab(backend, pdfTabUrl);
+
+        if (outcome.kind === "sent") {
+          window.close();
+          return;
+        }
+
+        if (outcome.kind === "needs-access") {
+          setNeedsAccess(true);
+          return;
+        }
+
+        if (outcome.kind === "saved") {
+          setResult(`Saved ${outcome.title ?? "the PDF"} with its PDF${outcome.id ? ` as ${outcome.id}` : ""}.`);
+          return;
+        }
+
+        // Not a PDF after all, so save it as a page, with what its identifiers give.
+        previews[0] = await enrich(preview);
+      }
+
       const saved = await backend.save(previews);
 
       if (saved.status === "sent") {
@@ -168,6 +206,22 @@ function Popup() {
     } finally {
       setSaving(false);
     }
+  }
+
+  function handleAllow() {
+    if (!pdfTabUrl) {
+      return;
+    }
+
+    // Called straight from the click: Firefox only prompts on a user action.
+    void chrome.permissions.request({ origins: [originPattern(pdfTabUrl)] }).then((granted) => {
+      if (granted) {
+        void handleSave();
+      } else {
+        setNeedsAccess(false);
+        setError(describeAccess(pdfTabUrl));
+      }
+    });
   }
 
   if (loading) {
@@ -197,7 +251,7 @@ function Popup() {
       </header>
 
       <section>
-        <p className="type">{TYPE_LABELS[preview.type]}</p>
+        <p className="type">{pdfTabUrl ? "PDF" : TYPE_LABELS[preview.type]}</p>
         <h1 className="title">{preview.title}</h1>
 
         {preview.authors.length > 0 && <p className="authors">{preview.authors.map(displayName).join(", ")}</p>}
@@ -219,7 +273,15 @@ function Popup() {
 
         {preview.abstract && <p className="abstract">{preview.abstract}</p>}
         {missing.length > 0 && <p className="muted">Not found: {missing.join(", ")}</p>}
-        <p className="muted">Title from: {preview.sources.title ?? "unknown"}</p>
+        {pdfTabUrl ? (
+          <p className="muted">
+            {settings?.kind === "desktop"
+              ? "The desktop app downloads this PDF and reads its metadata. Links that need your login won't work, and arXiv PDFs save metadata only."
+              : "linXiv reads the metadata from the file when you save."}
+          </p>
+        ) : (
+          <p className="muted">Title from: {preview.sources.title ?? "unknown"}</p>
+        )}
         {readError && <p className="muted">Could not read the page: {readError}</p>}
       </section>
 
@@ -247,6 +309,15 @@ function Popup() {
       >
         {saving ? "Saving…" : "Save to linXiv"}
       </button>
+
+      {needsAccess && pdfTabUrl && (
+        <>
+          <p className="saved">{describeAccess(pdfTabUrl)}</p>
+          <button className="save-button" type="button" onClick={handleAllow}>
+            Allow and save
+          </button>
+        </>
+      )}
 
       {result && <p className="saved ok">{result}</p>}
       {error && <p className="error">{error}</p>}
