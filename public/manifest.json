@@ -3,6 +3,10 @@
   "name": "linXiv Web Clipper",
   "version": "0.1.0",
   "description": "Save the page you are reading into linXiv, with metadata worked out from the page.",
+  "icons": {
+    "48": "icons/extension_logo.svg",
+    "96": "icons/extension_logo.svg"
+  },
   "host_permissions": [
     "https://api.crossref.org/*",
     "https://api.datacite.org/*",
@@ -11,7 +15,8 @@
   ],
   "action": {
     "default_title": "Clip to linXiv",
-    "default_popup": "popup/popup.html"
+    "default_popup": "popup/popup.html",
+    "default_icon": "icons/extension_logo.svg"
   },
   "browser_specific_settings": {
     "gecko": {
