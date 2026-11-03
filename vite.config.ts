@@ -20,7 +20,6 @@ export default defineConfig({
     rollupOptions: {
       input: {
         popup: resolve(root, "popup/popup.html"),
-        content: resolve(root, "src/content.ts"),
       },
 
       output: {
