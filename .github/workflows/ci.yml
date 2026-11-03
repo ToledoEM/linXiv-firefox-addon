@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - release
+    tags:
+      - "v*"
+  pull_request:
+    branches:
+      - main
+      - release
+
+permissions:
+  contents: read
+
+jobs:
+  conventions:
+    name: Branch name + commit messages
+    if: github.event_name == 'pull_request' && github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Branch name is <type>/<slug>
+        env:
+          BRANCH: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          # Releases are pull requests from main into release.
+          if [ "$BASE_REF" = release ] && [ "$BRANCH" = main ]; then exit 0; fi
+          case "$BRANCH" in
+            feat/?*|fix/?*|refactor/?*|perf/?*|docs/?*|test/?*|chore/?*|build/?*|ci/?*|style/?*|revert/?*) ;;
+            *) echo "::error::branch '$BRANCH' should be <type>/<slug>"; exit 1 ;;
+          esac
+      - name: Commit messages pass .githooks/commit-lint.sh
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          failed=0
+          for sha in $(git rev-list --no-merges "$BASE..$HEAD"); do
+            # Dependabot writes its own long bodies; its PRs skip this job too.
+            [ "$(git log -1 --format=%an "$sha")" = "dependabot[bot]" ] && continue
+            git log -1 --format=%B "$sha" > msg
+            if ! out=$(sh .githooks/commit-lint.sh msg); then
+              echo "::error::$(git log -1 --format='%h %s' "$sha")"
+              printf '%s\n' "$out"
+              failed=1
+            fi
+          done
+          exit $failed
+
+  addon:
+    name: Addon (lint + test + typecheck + build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm typecheck
+      - run: pnpm build
