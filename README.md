@@ -1,6 +1,6 @@
 # linXiv Firefox clipper
 
-Unofficial Firefox addon that saves what you're reading into [linXiv](https://github.com/linxiv-dev/linXiv). Click the toolbar button on any page and it works out the metadata from that page, the way Zotero Connector does. It reads embedded tags, looks up any identifier it finds, and falls back to the page's title and URL. You then attach the PDF yourself, or let the addon upload it when you use linxiv-headless.
+Unofficial Firefox addon that saves what you're reading into [linXiv](https://github.com/linxiv-dev/linXiv). Click the toolbar button on any page and it works out the metadata from that page, the way Zotero Connector does. It reads embedded tags, looks up any identifier it finds, and falls back to the page's title and URL. On an article page it saves the metadata and you attach the PDF yourself in linXiv. On a PDF open full page, it sends the file to linXiv, which reads the title, authors and DOI from it and checks them against Crossref.
 
 Saving to the desktop app, linXiv-web and linxiv-headless is the goal. The addon is still being built: today it only handles arXiv pages and the desktop app, and this fork hasn't been tested end to end.
 
