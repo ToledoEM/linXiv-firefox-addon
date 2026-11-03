@@ -67,4 +67,6 @@ export interface PageExtraction {
   candidates: ClipCandidate[];
   /** Why the page itself couldn't be read, when the result came from the tab alone. */
   readError?: string;
+  /** Firefox refused the script, as it does in its PDF viewer. */
+  blocked?: boolean;
 }

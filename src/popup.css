@@ -126,3 +126,44 @@ body {
   font-size: 12px;
   overflow-wrap: anywhere;
 }
+
+.options {
+  max-width: 460px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 14px 0;
+  font-size: 13px;
+}
+
+.field input,
+.field select {
+  padding: 7px 8px;
+  font: inherit;
+}
+
+.ok {
+  color: #15803d;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.link-button {
+  border: 0;
+  padding: 0;
+  background: none;
+  color: #71717a;
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.saved {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+}

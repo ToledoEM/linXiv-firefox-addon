@@ -20,6 +20,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         popup: resolve(root, "popup/popup.html"),
+        options: resolve(root, "options/options.html"),
       },
 
       output: {

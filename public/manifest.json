@@ -26,6 +26,15 @@
   },
   "permissions": [
     "activeTab",
-    "scripting"
-  ]
+    "scripting",
+    "storage"
+  ],
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  }
 }
