@@ -180,7 +180,8 @@ export function extractFromTab(rawUrl: string, title: string | undefined): PageE
   }
 
   // Strip the PDF.js suffix so the fallback title reads as a title.
-  const tabTitle = clean(title?.replace(/\s*[-–—]?\s*PDF\.js( viewer)?$/i, ""));
+  // Firefox also appends the file name: "A title - 1-s2.0-S26-main.pdf".
+  const tabTitle = clean(title?.replace(/\s*[-–—]?\s*PDF\.js( viewer)?$/i, "").replace(/\s+[-–—]\s+\S+\.pdf$/i, ""));
   const fileName = viewingPdf ? rawUrl.split(/[?#]/)[0].split("/").pop() : undefined;
 
   return {

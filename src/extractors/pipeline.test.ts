@@ -256,6 +256,14 @@ test("PDF viewer tab with nothing to go on goes to the backend's resolver", () =
   assert.equal(preview.pdfUrl, url);
 });
 
+test("PDF viewer tab title loses the file name Firefox appends", () => {
+  const { preview } = extractFromTab(
+    "https://pdf.example/1/main.pdf?X-Amz-Expires=300",
+    "The evolving energy values - 1-s2.0-S2666792421000081-main.pdf"
+  );
+  assert.equal(preview.title, "The evolving energy values");
+});
+
 test("about: page still gives an item", () => {
   const { preview } = extractFromTab("about:addons", "Add-ons Manager");
   assert.equal(preview.title, "Add-ons Manager");
