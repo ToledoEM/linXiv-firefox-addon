@@ -7,7 +7,7 @@ import type { SaveResult, Settings } from "./backends/types.ts";
 import { extractFromTab, toPreview } from "./extractors/index.ts";
 import { fillBlanks, identifyPage, lookupFields } from "./extractors/lookup.ts";
 import { displayName } from "./extractors/normalize.ts";
-import { savePdfTab } from "./pdfTab.ts";
+import { savePdfTab, type PageOpener } from "./pdfTab.ts";
 import { loadSettings } from "./settings.ts";
 import type { ClipCandidate, ClipPreview, PageExtraction } from "./types";
 
@@ -87,6 +87,21 @@ function describePdf(outcome: { id?: string; title?: string; note?: string }): s
 
   return `Saved ${outcome.title ?? "the PDF"} with its PDF${outcome.id ? ` as ${outcome.id}` : ""}.`;
 }
+
+/** A background tab, because a new window would take focus and close this popup. */
+const backgroundTabOpener: PageOpener = {
+  open: async (url) => {
+    const tab = await chrome.tabs.create({ url, active: false });
+
+    return async () => {
+      if (tab.id !== undefined) {
+        // The user may have closed it already.
+        await chrome.tabs.remove(tab.id).catch(() => undefined);
+      }
+    };
+  },
+  wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+};
 
 function describeAccess(url: string): string {
   return `Firefox needs your permission to read this PDF from ${new URL(url).hostname}.`;
@@ -183,7 +198,7 @@ function Popup() {
         setNeedsAccess(false);
 
         if (!pageOnly) {
-          const outcome = await savePdfTab(backend, pdfTabUrl);
+          const outcome = await savePdfTab(backend, pdfTabUrl, undefined, backgroundTabOpener);
 
           if (outcome.kind === "sent") {
             window.close();

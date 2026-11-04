@@ -284,6 +284,49 @@ test("PDF tab: a non-PDF falls back, an expired link says so, a blocked fetch as
   assert.deepEqual(await savePdfTab(backend, SIGNED, blocked), { kind: "needs-access" });
 });
 
+test("PDF tab: a security check gets a page to run in, then the file is read", async () => {
+  const CHECK = "<html><title>Security verification</title>";
+
+  function setup(answersInOrder: (Uint8Array | string)[]) {
+    const log: string[] = [];
+    let call = 0;
+    const fetcher = (async () => {
+      const body = answersInOrder[Math.min(call, answersInOrder.length - 1)];
+      call += 1;
+      return new Response(body as BodyInit);
+    }) as unknown as typeof fetch;
+    const opener = {
+      open: async (url: string) => {
+        log.push(`open ${url}`);
+        return async () => {
+          log.push("close");
+        };
+      },
+      wait: async () => undefined,
+    };
+    return { log, fetcher, opener, calls: () => call };
+  }
+
+  const { calls: uploads, fetcher: upload } = server({ "POST /api/papers/import/pdf": () => json({ source_id: "doi:10.1/x", title: "T" }) });
+  const backend = headlessBackend("http://h", "t", upload);
+
+  const passes = setup([CHECK, CHECK, PDF_BYTES]);
+  assert.deepEqual(await savePdfTab(backend, SIGNED, passes.fetcher, passes.opener), { kind: "saved", id: "doi:10.1/x", title: "T" });
+  assert.deepEqual(passes.log, [`open ${SIGNED}`, "close"]);
+  assert.equal(passes.calls(), 3);
+  assert.equal(uploads.length, 1);
+
+  const stuck = setup([CHECK]);
+  await assert.rejects(savePdfTab(backend, SIGNED, stuck.fetcher, stuck.opener), /security check blocked/);
+  assert.deepEqual(stuck.log, [`open ${SIGNED}`, "close"]);
+  assert.equal(stuck.calls(), 11);
+  assert.equal(uploads.length, 1);
+
+  const open = setup([PDF_BYTES]);
+  await savePdfTab(backend, SIGNED, open.fetcher, open.opener);
+  assert.deepEqual(open.log, []);
+});
+
 test("a signed link never reaches a saved record", async () => {
   const preview = toPreview({}, {}, SIGNED, "Paper", true);
   assert.equal(preview.canonicalUrl, "https://pdf.example/x/main.pdf");

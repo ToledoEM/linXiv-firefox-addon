@@ -30,6 +30,39 @@ function describeAnswer(response: Response, bytes: Uint8Array): string {
   return `${type}${host}${title ? `, titled "${title}"` : ""}`;
 }
 
+/** Opens a link in a real page, so a site's security check can run there. */
+export interface PageOpener {
+  open(url: string): Promise<() => Promise<void>>;
+  wait(ms: number): Promise<void>;
+}
+
+const CHECK_ATTEMPTS = 10;
+const CHECK_WAIT_MS = 1500;
+
+/** Keeps asking for the file while the check runs in the opened page. */
+async function readAfterCheck(url: string, fetcher: typeof fetch, opener: PageOpener): Promise<Uint8Array<ArrayBuffer> | null> {
+  const close = await opener.open(url);
+
+  try {
+    for (let attempt = 0; attempt < CHECK_ATTEMPTS; attempt += 1) {
+      await opener.wait(CHECK_WAIT_MS);
+      const response = await fetcher(url, { credentials: "include" }).catch(() => null);
+
+      if (response?.ok) {
+        const bytes = new Uint8Array(await response.arrayBuffer());
+
+        if (isPdf(bytes)) {
+          return bytes;
+        }
+      }
+    }
+
+    return null;
+  } finally {
+    await close();
+  }
+}
+
 function hasPdfPath(rawUrl: string): boolean {
   return new URL(rawUrl).pathname.toLowerCase().endsWith(".pdf");
 }
@@ -38,7 +71,12 @@ function hasPdfPath(rawUrl: string): boolean {
  * Hands the PDF open in a tab to the backend, which reads title, authors and DOI
  * from the file and checks them itself. The addon looks nothing up here.
  */
-export async function savePdfTab(backend: Backend, url: string, fetcher: typeof fetch = fetch): Promise<PdfTabOutcome> {
+export async function savePdfTab(
+  backend: Backend,
+  url: string,
+  fetcher: typeof fetch = fetch,
+  opener?: PageOpener
+): Promise<PdfTabOutcome> {
   const filename = pdfFileName(url);
 
   if (backend.pdfTransport === "url") {
@@ -65,15 +103,21 @@ export async function savePdfTab(backend: Backend, url: string, fetcher: typeof 
     );
   }
 
-  const bytes = new Uint8Array(await response.arrayBuffer());
+  let bytes = new Uint8Array(await response.arrayBuffer());
 
-  if (!isPdf(bytes)) {
-    if (SECURITY_CHECK.test(pageTitle(bytes) ?? "")) {
+  if (!isPdf(bytes) && SECURITY_CHECK.test(pageTitle(bytes) ?? "")) {
+    const passed = opener ? await readAfterCheck(url, fetcher, opener) : null;
+
+    if (!passed) {
       throw new BackendError(
         `${new URL(url).hostname}'s security check blocked the addon from reading this PDF. Save from the article page, then attach the PDF in linXiv.`
       );
     }
 
+    bytes = passed;
+  }
+
+  if (!isPdf(bytes)) {
     // A signed link only ever points at a file, so a web page here isn't a page to save.
     if (isSignedUrl(url)) {
       throw new BackendError(
