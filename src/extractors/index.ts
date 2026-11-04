@@ -17,7 +17,7 @@ import {
   pmidFromUrl,
   weakDois,
 } from "./identifiers.ts";
-import { clean, stripAbstractLabel } from "./normalize.ts";
+import { clean, stripAbstractLabel, withoutSignature } from "./normalize.ts";
 
 const FIELD_NAMES: (keyof ClipFields)[] = [
   "type", "title", "authors", "abstract", "doi", "arxivId", "pmid", "pmcid", "isbn", "issn",
@@ -71,7 +71,7 @@ function targetFor(fields: ClipFields, rawUrl: string, viewingPdf: boolean): Cli
   if (fields.arxivId) return { kind: "arxiv", value: fields.arxivId };
   if (fields.doi) return { kind: "doi", value: fields.doi };
   if (viewingPdf) return { kind: "pdf", value: rawUrl };
-  return { kind: "url", value: stripFragment(rawUrl) };
+  return { kind: "url", value: withoutSignature(stripFragment(rawUrl)) };
 }
 
 /** Builds the final item. Title always ends up set, so anything can be saved. */
@@ -82,7 +82,7 @@ export function toPreview(
   fallbackTitle: string | undefined,
   viewingPdf = false
 ): ClipPreview {
-  const pageUrl = stripFragment(rawUrl);
+  const pageUrl = withoutSignature(stripFragment(rawUrl));
   const title = fields.title ?? clean(fallbackTitle) ?? pageUrl;
   const filled: FieldSources = { ...sources };
 
@@ -97,7 +97,7 @@ export function toPreview(
     type: fields.type ?? (fields.doi || fields.arxivId ? "article" : "webpage"),
     title,
     authors: fields.authors ?? [],
-    canonicalUrl: fields.url ?? pageUrl,
+    canonicalUrl: fields.url ? withoutSignature(fields.url) : pageUrl,
     target: targetFor(fields, rawUrl, viewingPdf),
     sources: filled,
   };

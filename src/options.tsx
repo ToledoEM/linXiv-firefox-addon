@@ -11,7 +11,7 @@ import "./popup.css";
 const LABELS: Record<BackendKind, { name: string; hint: string }> = {
   desktop: { name: "linXiv desktop app", hint: "On this computer. Saves through a linxiv-clip:// link." },
   headless: { name: "linxiv-headless", hint: "Your server, with a token." },
-  web: { name: "linXiv-web", hint: "Your server. Doesn't accept the addon yet." },
+  web: { name: "linXiv-web", hint: "Your server, with a Browser add-on token." },
 };
 
 function Options() {
@@ -135,7 +135,7 @@ function Options() {
                   <li>Under Browser add-on, create a token. It's shown only once.</li>
                   <li>Paste it above.</li>
                 </ol>
-                <p>Only linXiv-web versions with the Browser add-on card can do this, and saving from the addon doesn't work yet.</p>
+                <p>Only linXiv-web versions with the Browser add-on card can do this.</p>
               </>
             )}
           </div>

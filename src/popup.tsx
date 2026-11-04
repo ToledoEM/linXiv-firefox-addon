@@ -7,7 +7,7 @@ import type { SaveResult, Settings } from "./backends/types.ts";
 import { extractFromTab, toPreview } from "./extractors/index.ts";
 import { fillBlanks, identifyPage, lookupFields } from "./extractors/lookup.ts";
 import { displayName } from "./extractors/normalize.ts";
-import { savePdfTab } from "./pdfTab.ts";
+import { CHECK_NEEDS_YOU, savePdfTab, type PageOpener } from "./pdfTab.ts";
 import { loadSettings } from "./settings.ts";
 import type { ClipCandidate, ClipPreview, PageExtraction } from "./types";
 
@@ -77,7 +77,33 @@ function missingFields(preview: ClipPreview): string[] {
 
 function describeResult(result: SaveResult): string {
   const saved = result.ids.length === 1 ? result.ids[0] : `${result.ids.length} items`;
-  return `Saved ${saved}. Attach the PDF in linXiv.`;
+  return result.note ? `${saved}: ${result.note}` : `Saved ${saved}. Attach the PDF in linXiv.`;
+}
+
+function describePdf(outcome: { id?: string; title?: string; note?: string }): string {
+  if (outcome.note) {
+    return `${outcome.title ?? outcome.id ?? "The PDF"}: ${outcome.note}`;
+  }
+
+  return `Saved ${outcome.title ?? "the PDF"} with its PDF${outcome.id ? ` as ${outcome.id}` : ""}.`;
+}
+
+/** A background tab, because a new window would take focus and close this popup. */
+function backgroundTabOpener(onOpen: () => void): PageOpener {
+  return {
+    open: async (url) => {
+      const tab = await chrome.tabs.create({ url, active: false });
+      onOpen();
+
+      return async () => {
+        if (tab.id !== undefined) {
+          // The user may have closed it already.
+          await chrome.tabs.remove(tab.id).catch(() => undefined);
+        }
+      };
+    },
+    wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  };
 }
 
 function describeAccess(url: string): string {
@@ -94,6 +120,7 @@ function Popup() {
   const [tabId, setTabId] = useState<number>();
   const [settings, setSettings] = useState<Settings>();
   const [result, setResult] = useState("");
+  const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -140,7 +167,8 @@ function Popup() {
     });
   }
 
-  async function handleSave() {
+  /** `pageOnly` skips reading the file, for a tab Firefox won't let the addon read. */
+  async function handleSave(pageOnly = false) {
     if (!preview || !settings || tabId === undefined || selected.size === 0) {
       return;
     }
@@ -172,24 +200,34 @@ function Popup() {
 
       if (pdfTabUrl) {
         setNeedsAccess(false);
-        const outcome = await savePdfTab(backend, pdfTabUrl);
 
-        if (outcome.kind === "sent") {
-          window.close();
-          return;
+        if (!pageOnly) {
+          // Shown at once: clicking in the new tab closes this popup and ends the wait.
+          const opener = backgroundTabOpener(() => setNotice(`If a security check appears: ${CHECK_NEEDS_YOU}`));
+          const outcome = await savePdfTab(backend, pdfTabUrl, undefined, opener);
+
+          if (outcome.kind === "sent") {
+            window.close();
+            return;
+          }
+
+          if (outcome.kind === "needs-access") {
+            // Access already held and still blocked: asking again can't help.
+            const held = await chrome.permissions.contains({ origins: [originPattern(pdfTabUrl)] });
+
+            if (!held) {
+              setNeedsAccess(true);
+              return;
+            }
+          }
+
+          if (outcome.kind === "saved") {
+            setResult(describePdf(outcome));
+            return;
+          }
         }
 
-        if (outcome.kind === "needs-access") {
-          setNeedsAccess(true);
-          return;
-        }
-
-        if (outcome.kind === "saved") {
-          setResult(`Saved ${outcome.title ?? "the PDF"} with its PDF${outcome.id ? ` as ${outcome.id}` : ""}.`);
-          return;
-        }
-
-        // Not a PDF after all, so save it as a page, with what its identifiers give.
+        // Not a PDF, or not readable: save it as a page, with what its identifiers give.
         previews[0] = await enrich(preview);
       }
 
@@ -204,6 +242,7 @@ function Popup() {
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
+      setNotice("");
       setSaving(false);
     }
   }
@@ -214,14 +253,18 @@ function Popup() {
     }
 
     // Called straight from the click: Firefox only prompts on a user action.
-    void chrome.permissions.request({ origins: [originPattern(pdfTabUrl)] }).then((granted) => {
-      if (granted) {
-        void handleSave();
-      } else {
-        setNeedsAccess(false);
-        setError(describeAccess(pdfTabUrl));
-      }
-    });
+    void chrome.permissions.request({ origins: [originPattern(pdfTabUrl)] }).then(
+      (granted) => {
+        if (granted) {
+          void handleSave();
+        } else {
+          setNeedsAccess(false);
+          setError(describeAccess(pdfTabUrl));
+        }
+      },
+      // Firefox refuses to grant some hosts at all, such as addons.mozilla.org.
+      () => void handleSave(true)
+    );
   }
 
   if (loading) {
@@ -319,6 +362,7 @@ function Popup() {
         </>
       )}
 
+      {notice && <p className="saved">{notice}</p>}
       {result && <p className="saved ok">{result}</p>}
       {error && <p className="error">{error}</p>}
 
