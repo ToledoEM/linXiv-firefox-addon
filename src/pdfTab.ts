@@ -1,5 +1,6 @@
 import { isPdf, MAX_PDF_BYTES } from "./backends/bytes.ts";
 import { BackendError, type Backend } from "./backends/types.ts";
+import { isSignedUrl } from "./extractors/normalize.ts";
 
 export type PdfTabOutcome =
   | { kind: "saved"; id?: string; title?: string; note?: string }
@@ -53,6 +54,11 @@ export async function savePdfTab(backend: Backend, url: string, fetcher: typeof 
   const bytes = new Uint8Array(await response.arrayBuffer());
 
   if (!isPdf(bytes)) {
+    // A signed link only ever points at a file, so a web page here isn't a page to save.
+    if (isSignedUrl(url)) {
+      throw new BackendError("The PDF link answered with a web page, not the file. It may have expired. Reload the PDF tab and try again.");
+    }
+
     return { kind: "not-pdf" };
   }
 

@@ -268,13 +268,31 @@ test("PDF tab, desktop: URL handed over, nothing fetched", async () => {
 test("PDF tab: a non-PDF falls back, an expired link says so, a blocked fetch asks", async () => {
   const backend = headlessBackend("http://h", "t", server({}).fetcher);
 
-  assert.deepEqual(await savePdfTab(backend, SIGNED, answers("<html>")), { kind: "not-pdf" });
+  assert.deepEqual(await savePdfTab(backend, "https://x.example/a.pdf", answers("<html>")), { kind: "not-pdf" });
+  await assert.rejects(savePdfTab(backend, SIGNED, answers("<html>")), /web page, not the file/);
   await assert.rejects(savePdfTab(backend, SIGNED, answers("gone", 403)), /may have expired/);
 
   const blocked = (async () => {
     throw new TypeError("NetworkError");
   }) as unknown as typeof fetch;
   assert.deepEqual(await savePdfTab(backend, SIGNED, blocked), { kind: "needs-access" });
+});
+
+test("a signed link never reaches a saved record", async () => {
+  const preview = toPreview({}, {}, SIGNED, "Paper", true);
+  assert.equal(preview.canonicalUrl, "https://pdf.example/x/main.pdf");
+
+  const { calls, fetcher } = server({ "POST /api/papers/import/bibtex": () => json({ source_ids: ["local:a"] }) });
+  await headlessBackend("http://h", "t", fetcher).save([preview]);
+  const sent = decode(JSON.parse(calls[0].body as string).file_b64);
+  assert.equal(sent.includes("secret"), false);
+  assert.equal(sent.includes("X-Amz"), false);
+
+  const fromPage = toPreview({ url: SIGNED }, {}, "https://x.example/a", "Paper");
+  assert.equal(fromPage.canonicalUrl, "https://pdf.example/x/main.pdf");
+
+  const ordinary = toPreview({}, {}, "https://x.example/a?id=3&b=4#top", "Paper");
+  assert.equal(ordinary.canonicalUrl, "https://x.example/a?id=3&b=4");
 });
 
 test("addresses", () => {

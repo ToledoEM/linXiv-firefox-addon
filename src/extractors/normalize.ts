@@ -2,6 +2,22 @@ const MONTHS: Record<string, number> = {
   jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
 };
 
+const SIGNING_PARAM = /^(x-amz-|x-goog-|x-ms-|signature$|sig$|awsaccesskeyid$|googleaccessid$|token$|access_token$)/i;
+
+/** True for a link carrying a temporary credential, such as an S3 signed URL. */
+export function isSignedUrl(rawUrl: string): boolean {
+  try {
+    return [...new URL(rawUrl).searchParams.keys()].some((name) => SIGNING_PARAM.test(name));
+  } catch {
+    return false;
+  }
+}
+
+/** Such a link must never be stored, so its whole query goes. Other queries stay. */
+export function withoutSignature(rawUrl: string): string {
+  return isSignedUrl(rawUrl) ? rawUrl.split("?")[0] : rawUrl;
+}
+
 function pad(value: number): string {
   return String(value).padStart(2, "0");
 }
