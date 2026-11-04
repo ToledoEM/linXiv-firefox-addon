@@ -81,6 +81,13 @@ export async function savePdfTab(
   const filename = pdfFileName(url);
 
   if (backend.pdfTransport === "url") {
+    // The backend would download it without this browser's session, and would hold the credential.
+    if (isSignedUrl(url)) {
+      throw new BackendError(
+        "The desktop app can't download this protected link. Save from the article page, then attach this PDF in linXiv. Or use a server backend, which can import it."
+      );
+    }
+
     // The desktop app only treats URLs ending in .pdf as files to import.
     if (!hasPdfPath(url)) {
       return { kind: "not-pdf" };

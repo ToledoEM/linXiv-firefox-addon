@@ -263,6 +263,11 @@ test("PDF tab, desktop: URL handed over, nothing fetched", async () => {
   assert.deepEqual(await savePdfTab(backend, "https://x.example/a.pdf", noFetch), { kind: "sent" });
   assert.equal(opened[0], `linxiv-clip://add?input=${encodeURIComponent("https://x.example/a.pdf")}`);
   assert.deepEqual(await savePdfTab(backend, "https://arxiv.org/pdf/1706.03762", noFetch), { kind: "not-pdf" });
+
+  // A protected link is refused before anything reaches the app.
+  const sent = opened.length;
+  await assert.rejects(savePdfTab(backend, SIGNED, noFetch), /desktop app can't download this protected link/);
+  assert.equal(opened.length, sent);
 });
 
 test("PDF tab: a non-PDF falls back, an expired link says so, a blocked fetch asks", async () => {
