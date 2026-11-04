@@ -158,7 +158,11 @@ test("web: bad token and older servers are explained", async () => {
   await assert.rejects(webBackend("http://w", "t", missing.fetcher).save([doiClip()]), /no Browser add-on routes/);
 
   const refused = server({ [BIBTEX_ROUTE]: () => json({ detail: "cross-origin request rejected" }, 403) });
-  await assert.rejects(webBackend("http://w", "t", refused.fetcher).save([doiClip()]), /no Browser add-on routes.*cross-origin/);
+  await assert.rejects(webBackend("http://w", "t", refused.fetcher).save([doiClip()]), (error: Error) => {
+    assert.match(error.message, /linXiv-web: cross-origin request rejected/);
+    assert.doesNotMatch(error.message, /no Browser add-on routes/);
+    return true;
+  });
 
   const broken = server({ [BIBTEX_ROUTE]: () => json({ detail: "boom" }, 500) });
   await assert.rejects(webBackend("http://w", "t", broken.fetcher).save([doiClip()]), /linXiv-web: boom/);
@@ -178,7 +182,13 @@ test("web probe uses the token route", async () => {
   const denied = server({ "GET /api/clip/ping": () => json({ detail: "no" }, 401) });
   assert.match((await webBackend("http://w", "t", denied.fetcher).probe()).message, /rejected the token/);
 
-  for (const answer of [json({ detail: "no" }, 403), json({}, 404), new Response("<html>"), json({ status: "up" })]) {
+  const refused = server({ "GET /api/clip/ping": () => json({ detail: "first-run setup not finished" }, 403) });
+  const refusal = await webBackend("http://w", "t", refused.fetcher).probe();
+  assert.equal(refusal.ok, false);
+  assert.match(refusal.message, /refused the addon: first-run setup not finished/);
+  assert.doesNotMatch(refusal.message, /no Browser add-on routes/);
+
+  for (const answer of [json({}, 404), new Response("<html>"), json({ status: "up" })]) {
     const older = server({ "GET /api/clip/ping": () => answer });
     const result = await webBackend("http://w", "t", older.fetcher).probe();
     assert.equal(result.ok, false);

@@ -79,10 +79,6 @@ export function webBackend(baseUrl: string, token: string, fetcher: Fetcher = fe
       throw new BackendError(NO_ROUTES);
     }
 
-    if (response.status === 403) {
-      throw new BackendError(`${NO_ROUTES} (${await detail(response)})`);
-    }
-
     if (!response.ok) {
       throw new BackendError(`linXiv-web: ${await detail(response)}`);
     }
@@ -99,6 +95,11 @@ export function webBackend(baseUrl: string, token: string, fetcher: Fetcher = fe
 
         if (response.status === 401) {
           return { ok: false, message: "linXiv-web rejected the token." };
+        }
+
+        // A server without the routes answers 404, so a 403 is a refusal worth showing as written.
+        if (response.status === 403) {
+          return { ok: false, message: `linXiv-web refused the addon: ${await detail(response)}` };
         }
 
         const body = (await response.json().catch(() => null)) as { ok?: unknown; version?: unknown; username?: unknown } | null;
