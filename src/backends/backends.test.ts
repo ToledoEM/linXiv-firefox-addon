@@ -105,30 +105,85 @@ test("headless probe recognizes the server, and other servers", async () => {
   assert.match((await headlessBackend("http://h", "t", denied.fetcher).probe()).message, /rejected the token/);
 });
 
-test("web: multipart BibTeX with the token", async () => {
-  const { calls, fetcher } = server({ "POST /api/import/bibtex": () => json({ source_ids: ["doi:10.5555/a/b"] }) });
+const BIBTEX_ROUTE = "POST /api/clip/bibtex";
+const PDF_ROUTE = "POST /api/clip/pdf";
+
+test("web: multipart BibTeX with the token, no cookies", async () => {
+  const { calls, fetcher } = server({
+    [BIBTEX_ROUTE]: () => json({ source_ids: ["doi:10.5555/a/b"], new: ["doi:10.5555/a/b"], existing: [], project_id: 7, failed: [] }),
+  });
 
   const result = await webBackend("http://w/", "tok", fetcher).save([doiClip()]);
 
-  assert.deepEqual(result, { status: "saved", ids: ["doi:10.5555/a/b"] });
+  assert.equal(result.status, "saved");
+  assert.deepEqual(result.ids, ["doi:10.5555/a/b"]);
+  assert.match(result.note ?? "", /Saved\. Attach the PDF in linXiv\. On the list Imported - to check\./);
+  assert.equal(calls[0].url, "http://w/api/clip/bibtex");
   assert.equal(calls[0].headers.get("authorization"), "Bearer tok");
+  assert.equal(calls[0].credentials, "omit");
 
   const file = (calls[0].body as FormData).get("file") as File;
   assert.equal(file.name, "clip.bib");
   assert.match(await file.text(), /doi = \{10\.5555\/a\/b\}/);
 });
 
-test("web: today's origin rejection is explained", async () => {
-  const { fetcher } = server({ "POST /api/import/bibtex": () => json({ detail: "cross-origin request rejected" }, 403) });
-  await assert.rejects(webBackend("http://w", "t", fetcher).save([doiClip()]), /doesn't accept the addon yet: cross-origin/);
+test("web: BibTeX notes for existing and mixed clips", async () => {
+  const known = server({ [BIBTEX_ROUTE]: () => json({ source_ids: ["a"], new: [], existing: ["a"], project_id: 7, failed: [] }) });
+  assert.match((await webBackend("http://w", "t", known.fetcher).save([doiClip()])).note ?? "", /^Already in your library, unchanged\./);
+
+  const mixed = server({ [BIBTEX_ROUTE]: () => json({ source_ids: ["a", "b"], new: ["a"], existing: ["b"], project_id: 7, failed: [] }) });
+  assert.match((await webBackend("http://w", "t", mixed.fetcher).save([doiClip()])).note ?? "", /^1 new, 1 already in your library\./);
 });
 
-test("web probe", async () => {
-  const good = server({ "GET /api/health": () => json({ ok: true, version: "0.1.3" }) });
-  assert.equal((await webBackend("http://w", "", good.fetcher).probe()).version, "0.1.3");
+test("web: failed list joins warn, whatever shape failed has", async () => {
+  const named = server({ [BIBTEX_ROUTE]: () => json({ source_ids: ["a"], new: ["a"], existing: [], project_id: null, failed: ["a"] }) });
+  assert.match((await webBackend("http://w", "t", named.fetcher).save([doiClip()])).note ?? "", /Saved, but a didn't join the list/);
 
-  const other = server({ "GET /api/health": () => json({ status: "up" }) });
-  assert.equal((await webBackend("http://w", "", other.fetcher).probe()).ok, false);
+  const objects = server({ [BIBTEX_ROUTE]: () => json({ source_ids: ["a"], new: ["a"], existing: [], project_id: 7, failed: [{ id: "a" }] }) });
+  assert.match((await webBackend("http://w", "t", objects.fetcher).save([doiClip()])).note ?? "", /Saved, but some papers didn't join the list/);
+});
+
+test("web: a thin answer still saves", async () => {
+  const thin = server({ [BIBTEX_ROUTE]: () => new Response("not json") });
+  const result = await webBackend("http://w", "t", thin.fetcher).save([doiClip()]);
+  assert.deepEqual(result.ids, []);
+  assert.equal(result.status, "saved");
+});
+
+test("web: bad token and older servers are explained", async () => {
+  const denied = server({ [BIBTEX_ROUTE]: () => json({ detail: "Missing or invalid clip token" }, 401) });
+  await assert.rejects(webBackend("http://w", "t", denied.fetcher).save([doiClip()]), /rejected the token/);
+
+  const missing = server({});
+  await assert.rejects(webBackend("http://w", "t", missing.fetcher).save([doiClip()]), /no Browser add-on routes/);
+
+  const refused = server({ [BIBTEX_ROUTE]: () => json({ detail: "cross-origin request rejected" }, 403) });
+  await assert.rejects(webBackend("http://w", "t", refused.fetcher).save([doiClip()]), /no Browser add-on routes.*cross-origin/);
+
+  const broken = server({ [BIBTEX_ROUTE]: () => json({ detail: "boom" }, 500) });
+  await assert.rejects(webBackend("http://w", "t", broken.fetcher).save([doiClip()]), /linXiv-web: boom/);
+});
+
+test("web probe uses the token route", async () => {
+  const good = server({ "GET /api/clip/ping": () => json({ ok: true, version: "0.1.3", username: "ana" }) });
+  const probed = await webBackend("http://w", "t", good.fetcher).probe();
+  assert.equal(probed.ok, true);
+  assert.equal(probed.version, "0.1.3");
+  assert.match(probed.message, /as ana/);
+  assert.equal(good.calls[0].headers.get("authorization"), "Bearer t");
+
+  const noName = server({ "GET /api/clip/ping": () => json({ ok: true, version: "0.1.3", username: null }) });
+  assert.doesNotMatch((await webBackend("http://w", "t", noName.fetcher).probe()).message, / as /);
+
+  const denied = server({ "GET /api/clip/ping": () => json({ detail: "no" }, 401) });
+  assert.match((await webBackend("http://w", "t", denied.fetcher).probe()).message, /rejected the token/);
+
+  for (const answer of [json({ detail: "no" }, 403), json({}, 404), new Response("<html>"), json({ status: "up" })]) {
+    const older = server({ "GET /api/clip/ping": () => answer });
+    const result = await webBackend("http://w", "t", older.fetcher).probe();
+    assert.equal(result.ok, false);
+    assert.match(result.message, /no Browser add-on routes/);
+  }
 });
 
 test("desktop: one bibtex link", async () => {
@@ -162,14 +217,39 @@ test("PDF tab, headless: bytes go to import, and the signed link doesn't", async
 });
 
 test("PDF tab, web: multipart file with a .pdf name", async () => {
-  const { calls, fetcher } = server({ "POST /api/pdfs/import": () => json({ source_id: "local:a", title: "T" }) });
+  const { calls, fetcher } = server({
+    [PDF_ROUTE]: () => json({ source_ids: ["local:a"], new: ["local:a"], existing: [], attached: [], project_id: 7, failed: [] }),
+  });
 
   const outcome = await savePdfTab(webBackend("http://w", "t", fetcher), "https://arxiv.org/pdf/1706.03762", answers(PDF_BYTES));
 
-  assert.deepEqual(outcome, { kind: "saved", id: "local:a", title: "T" });
+  // The route gives no title, so the popup falls back to the id.
+  assert.deepEqual(outcome, {
+    kind: "saved",
+    id: "local:a",
+    title: undefined,
+    note: "Saved with its PDF. On the list Imported - to check.",
+  });
+  assert.equal(calls[0].url, "http://w/api/clip/pdf");
   const file = (calls[0].body as FormData).get("file") as File;
   assert.equal(file.name, "1706.03762.pdf");
   assert.equal(await file.text(), "%PDF-1.4 body");
+});
+
+test("PDF tab, web: existing paper, attached PDF, lost metadata, optional title", async () => {
+  async function save(answer: unknown) {
+    const { fetcher } = server({ [PDF_ROUTE]: () => json(answer) });
+    return savePdfTab(webBackend("http://w", "t", fetcher), "https://x.example/a.pdf", answers(PDF_BYTES));
+  }
+
+  const note = (outcome: Awaited<ReturnType<typeof save>>) => (outcome.kind === "saved" ? outcome.note : undefined);
+
+  assert.match(note(await save({ source_ids: ["a"], new: [], existing: ["a"], attached: [], failed: [] })) ?? "", /^Already in your library with a PDF, nothing changed\./);
+  assert.match(note(await save({ source_ids: ["a"], new: [], existing: ["a"], attached: ["a"], metadata_kept: true, failed: [] })) ?? "", /^PDF added to the paper already in your library\.$/);
+  assert.match(note(await save({ source_ids: ["a"], new: [], existing: ["a"], attached: ["a"], metadata_kept: false, failed: [] })) ?? "", /metadata may have changed/);
+
+  const titled = await save({ source_ids: ["a"], new: ["a"], existing: [], attached: [], title: "T", failed: [] });
+  assert.equal(titled.kind === "saved" ? titled.title : undefined, "T");
 });
 
 test("PDF tab, desktop: URL handed over, nothing fetched", async () => {

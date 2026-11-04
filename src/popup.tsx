@@ -77,7 +77,15 @@ function missingFields(preview: ClipPreview): string[] {
 
 function describeResult(result: SaveResult): string {
   const saved = result.ids.length === 1 ? result.ids[0] : `${result.ids.length} items`;
-  return `Saved ${saved}. Attach the PDF in linXiv.`;
+  return result.note ? `${saved}: ${result.note}` : `Saved ${saved}. Attach the PDF in linXiv.`;
+}
+
+function describePdf(outcome: { id?: string; title?: string; note?: string }): string {
+  if (outcome.note) {
+    return `${outcome.title ?? outcome.id ?? "The PDF"}: ${outcome.note}`;
+  }
+
+  return `Saved ${outcome.title ?? "the PDF"} with its PDF${outcome.id ? ` as ${outcome.id}` : ""}.`;
 }
 
 function describeAccess(url: string): string {
@@ -185,7 +193,7 @@ function Popup() {
         }
 
         if (outcome.kind === "saved") {
-          setResult(`Saved ${outcome.title ?? "the PDF"} with its PDF${outcome.id ? ` as ${outcome.id}` : ""}.`);
+          setResult(describePdf(outcome));
           return;
         }
 

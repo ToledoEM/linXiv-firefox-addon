@@ -2,7 +2,7 @@ import { isPdf, MAX_PDF_BYTES } from "./backends/bytes.ts";
 import { BackendError, type Backend } from "./backends/types.ts";
 
 export type PdfTabOutcome =
-  | { kind: "saved"; id?: string; title?: string }
+  | { kind: "saved"; id?: string; title?: string; note?: string }
   | { kind: "sent" }
   /** Not a PDF after all: save it like any other page. */
   | { kind: "not-pdf" }
@@ -61,5 +61,5 @@ export async function savePdfTab(backend: Backend, url: string, fetcher: typeof 
   }
 
   const saved = await backend.savePdf({ url, filename, bytes });
-  return { kind: "saved", id: saved.id, title: saved.title };
+  return { kind: "saved", id: saved.id, title: saved.title, ...(saved.note ? { note: saved.note } : {}) };
 }
