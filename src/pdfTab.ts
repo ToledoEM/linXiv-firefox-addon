@@ -16,6 +16,20 @@ export function pdfFileName(rawUrl: string): string {
   return name.toLowerCase().endsWith(".pdf") ? name : `${name}.pdf`;
 }
 
+const SECURITY_CHECK = /security (verification|check)|just a moment|attention required|verify you are human|captcha/i;
+
+function pageTitle(bytes: Uint8Array): string | undefined {
+  return /<title[^>]*>([^<]{1,80})/i.exec(new TextDecoder().decode(bytes.subarray(0, 8192)))?.[1].trim();
+}
+
+/** Type, final host and page title. The URL's query is left out: it can hold credentials. */
+function describeAnswer(response: Response, bytes: Uint8Array): string {
+  const type = response.headers.get("content-type")?.split(";")[0] ?? "no content type";
+  const host = response.url ? ` from ${new URL(response.url).hostname}` : "";
+  const title = pageTitle(bytes);
+  return `${type}${host}${title ? `, titled "${title}"` : ""}`;
+}
+
 function hasPdfPath(rawUrl: string): boolean {
   return new URL(rawUrl).pathname.toLowerCase().endsWith(".pdf");
 }
@@ -54,9 +68,17 @@ export async function savePdfTab(backend: Backend, url: string, fetcher: typeof 
   const bytes = new Uint8Array(await response.arrayBuffer());
 
   if (!isPdf(bytes)) {
+    if (SECURITY_CHECK.test(pageTitle(bytes) ?? "")) {
+      throw new BackendError(
+        `${new URL(url).hostname}'s security check blocked the addon from reading this PDF. Save from the article page, then attach the PDF in linXiv.`
+      );
+    }
+
     // A signed link only ever points at a file, so a web page here isn't a page to save.
     if (isSignedUrl(url)) {
-      throw new BackendError("The PDF link answered with a web page, not the file. It may have expired. Reload the PDF tab and try again.");
+      throw new BackendError(
+        `The PDF link answered with a web page, not the file (${describeAnswer(response, bytes)}). It may have expired. Reload the PDF tab and try again.`
+      );
     }
 
     return { kind: "not-pdf" };

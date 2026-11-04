@@ -148,7 +148,8 @@ function Popup() {
     });
   }
 
-  async function handleSave() {
+  /** `pageOnly` skips reading the file, for a tab Firefox won't let the addon read. */
+  async function handleSave(pageOnly = false) {
     if (!preview || !settings || tabId === undefined || selected.size === 0) {
       return;
     }
@@ -180,24 +181,32 @@ function Popup() {
 
       if (pdfTabUrl) {
         setNeedsAccess(false);
-        const outcome = await savePdfTab(backend, pdfTabUrl);
 
-        if (outcome.kind === "sent") {
-          window.close();
-          return;
+        if (!pageOnly) {
+          const outcome = await savePdfTab(backend, pdfTabUrl);
+
+          if (outcome.kind === "sent") {
+            window.close();
+            return;
+          }
+
+          if (outcome.kind === "needs-access") {
+            // Access already held and still blocked: asking again can't help.
+            const held = await chrome.permissions.contains({ origins: [originPattern(pdfTabUrl)] });
+
+            if (!held) {
+              setNeedsAccess(true);
+              return;
+            }
+          }
+
+          if (outcome.kind === "saved") {
+            setResult(describePdf(outcome));
+            return;
+          }
         }
 
-        if (outcome.kind === "needs-access") {
-          setNeedsAccess(true);
-          return;
-        }
-
-        if (outcome.kind === "saved") {
-          setResult(describePdf(outcome));
-          return;
-        }
-
-        // Not a PDF after all, so save it as a page, with what its identifiers give.
+        // Not a PDF, or not readable: save it as a page, with what its identifiers give.
         previews[0] = await enrich(preview);
       }
 
@@ -222,14 +231,18 @@ function Popup() {
     }
 
     // Called straight from the click: Firefox only prompts on a user action.
-    void chrome.permissions.request({ origins: [originPattern(pdfTabUrl)] }).then((granted) => {
-      if (granted) {
-        void handleSave();
-      } else {
-        setNeedsAccess(false);
-        setError(describeAccess(pdfTabUrl));
-      }
-    });
+    void chrome.permissions.request({ origins: [originPattern(pdfTabUrl)] }).then(
+      (granted) => {
+        if (granted) {
+          void handleSave();
+        } else {
+          setNeedsAccess(false);
+          setError(describeAccess(pdfTabUrl));
+        }
+      },
+      // Firefox refuses to grant some hosts at all, such as addons.mozilla.org.
+      () => void handleSave(true)
+    );
   }
 
   if (loading) {

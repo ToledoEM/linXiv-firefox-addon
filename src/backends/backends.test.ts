@@ -270,6 +270,12 @@ test("PDF tab: a non-PDF falls back, an expired link says so, a blocked fetch as
 
   assert.deepEqual(await savePdfTab(backend, "https://x.example/a.pdf", answers("<html>")), { kind: "not-pdf" });
   await assert.rejects(savePdfTab(backend, SIGNED, answers("<html>")), /web page, not the file/);
+  await assert.rejects(savePdfTab(backend, SIGNED, answers("<html><title> Other page </title>")), /titled "Other page"/);
+
+  // A security check saves nothing, signed link or not.
+  const check = /pdf\.example's security check blocked the addon.*attach the PDF in linXiv/;
+  await assert.rejects(savePdfTab(backend, SIGNED, answers("<html><title>Security verification</title>")), check);
+  await assert.rejects(savePdfTab(backend, "https://pdf.example/a.pdf", answers("<title>Just a moment...</title>")), check);
   await assert.rejects(savePdfTab(backend, SIGNED, answers("gone", 403)), /may have expired/);
 
   const blocked = (async () => {
