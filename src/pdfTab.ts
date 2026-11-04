@@ -36,31 +36,32 @@ export interface PageOpener {
   wait(ms: number): Promise<void>;
 }
 
+export const CHECK_NEEDS_YOU = "Solve the security check in the new tab, then press Save there.";
 const CHECK_ATTEMPTS = 10;
 const CHECK_WAIT_MS = 1500;
 
-/** Keeps asking for the file while the check runs in the opened page. */
+/**
+ * Keeps asking for the file while the check runs in the opened page. The page closes
+ * only on success: when the check needs a person, they may still be solving it.
+ */
 async function readAfterCheck(url: string, fetcher: typeof fetch, opener: PageOpener): Promise<Uint8Array<ArrayBuffer> | null> {
   const close = await opener.open(url);
 
-  try {
-    for (let attempt = 0; attempt < CHECK_ATTEMPTS; attempt += 1) {
-      await opener.wait(CHECK_WAIT_MS);
-      const response = await fetcher(url, { credentials: "include" }).catch(() => null);
+  for (let attempt = 0; attempt < CHECK_ATTEMPTS; attempt += 1) {
+    await opener.wait(CHECK_WAIT_MS);
+    const response = await fetcher(url, { credentials: "include" }).catch(() => null);
 
-      if (response?.ok) {
-        const bytes = new Uint8Array(await response.arrayBuffer());
+    if (response?.ok) {
+      const bytes = new Uint8Array(await response.arrayBuffer());
 
-        if (isPdf(bytes)) {
-          return bytes;
-        }
+      if (isPdf(bytes)) {
+        await close();
+        return bytes;
       }
     }
-
-    return null;
-  } finally {
-    await close();
   }
+
+  return null;
 }
 
 function hasPdfPath(rawUrl: string): boolean {
@@ -107,6 +108,10 @@ export async function savePdfTab(
 
   if (!isPdf(bytes) && SECURITY_CHECK.test(pageTitle(bytes) ?? "")) {
     const passed = opener ? await readAfterCheck(url, fetcher, opener) : null;
+
+    if (!passed && opener) {
+      throw new BackendError(CHECK_NEEDS_YOU);
+    }
 
     if (!passed) {
       throw new BackendError(

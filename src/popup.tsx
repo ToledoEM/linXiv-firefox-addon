@@ -7,7 +7,7 @@ import type { SaveResult, Settings } from "./backends/types.ts";
 import { extractFromTab, toPreview } from "./extractors/index.ts";
 import { fillBlanks, identifyPage, lookupFields } from "./extractors/lookup.ts";
 import { displayName } from "./extractors/normalize.ts";
-import { savePdfTab, type PageOpener } from "./pdfTab.ts";
+import { CHECK_NEEDS_YOU, savePdfTab, type PageOpener } from "./pdfTab.ts";
 import { loadSettings } from "./settings.ts";
 import type { ClipCandidate, ClipPreview, PageExtraction } from "./types";
 
@@ -89,19 +89,22 @@ function describePdf(outcome: { id?: string; title?: string; note?: string }): s
 }
 
 /** A background tab, because a new window would take focus and close this popup. */
-const backgroundTabOpener: PageOpener = {
-  open: async (url) => {
-    const tab = await chrome.tabs.create({ url, active: false });
+function backgroundTabOpener(onOpen: () => void): PageOpener {
+  return {
+    open: async (url) => {
+      const tab = await chrome.tabs.create({ url, active: false });
+      onOpen();
 
-    return async () => {
-      if (tab.id !== undefined) {
-        // The user may have closed it already.
-        await chrome.tabs.remove(tab.id).catch(() => undefined);
-      }
-    };
-  },
-  wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
-};
+      return async () => {
+        if (tab.id !== undefined) {
+          // The user may have closed it already.
+          await chrome.tabs.remove(tab.id).catch(() => undefined);
+        }
+      };
+    },
+    wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  };
+}
 
 function describeAccess(url: string): string {
   return `Firefox needs your permission to read this PDF from ${new URL(url).hostname}.`;
@@ -117,6 +120,7 @@ function Popup() {
   const [tabId, setTabId] = useState<number>();
   const [settings, setSettings] = useState<Settings>();
   const [result, setResult] = useState("");
+  const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -198,7 +202,9 @@ function Popup() {
         setNeedsAccess(false);
 
         if (!pageOnly) {
-          const outcome = await savePdfTab(backend, pdfTabUrl, undefined, backgroundTabOpener);
+          // Shown at once: clicking in the new tab closes this popup and ends the wait.
+          const opener = backgroundTabOpener(() => setNotice(`If a security check appears: ${CHECK_NEEDS_YOU}`));
+          const outcome = await savePdfTab(backend, pdfTabUrl, undefined, opener);
 
           if (outcome.kind === "sent") {
             window.close();
@@ -236,6 +242,7 @@ function Popup() {
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
+      setNotice("");
       setSaving(false);
     }
   }
@@ -355,6 +362,7 @@ function Popup() {
         </>
       )}
 
+      {notice && <p className="saved">{notice}</p>}
       {result && <p className="saved ok">{result}</p>}
       {error && <p className="error">{error}</p>}
 

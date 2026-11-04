@@ -317,8 +317,9 @@ test("PDF tab: a security check gets a page to run in, then the file is read", a
   assert.equal(uploads.length, 1);
 
   const stuck = setup([CHECK]);
-  await assert.rejects(savePdfTab(backend, SIGNED, stuck.fetcher, stuck.opener), /security check blocked/);
-  assert.deepEqual(stuck.log, [`open ${SIGNED}`, "close"]);
+  // Still unsolved: the tab stays open, because the user may be solving it.
+  await assert.rejects(savePdfTab(backend, SIGNED, stuck.fetcher, stuck.opener), /Solve the security check in the new tab/);
+  assert.deepEqual(stuck.log, [`open ${SIGNED}`]);
   assert.equal(stuck.calls(), 11);
   assert.equal(uploads.length, 1);
 
