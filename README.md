@@ -2,9 +2,7 @@
 
 Unofficial Firefox addon that saves what you're reading into [linXiv](https://github.com/linxiv-dev/linXiv). Click the toolbar button on any page and it works out the metadata from that page, the way Zotero Connector does. It reads embedded tags, looks up any identifier it finds, and falls back to the page's title and URL. On an article page it saves the metadata and you attach the PDF yourself in linXiv. On a PDF open full page, it sends the file to linXiv, which reads the title, authors and DOI from it and checks them against Crossref.
 
-The addon is still being built. Saving works with the desktop app and linxiv-headless. Saving to linXiv-web doesn't work yet, because the server rejects writes from the addon. Saving a full-page PDF hasn't been tested from Firefox.
-
-Full documentation is in [docs/](docs/index.md).
+The addon is still being built. Saving works with the desktop app and linxiv-headless. Saving to linXiv-web needs a server version with the Browser add-on routes, and hasn't been tested from Firefox. Saving a full-page PDF hasn't been tested from Firefox.
 
 ## Requirements
 
