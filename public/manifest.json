@@ -4,8 +4,10 @@
   "version": "0.1.0",
   "description": "Save the page you are reading into linXiv, with metadata worked out from the page.",
   "icons": {
-    "48": "icons/extension_logo.svg",
-    "96": "icons/extension_logo.svg"
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
   },
   "host_permissions": [
     "https://api.crossref.org/*",
@@ -16,11 +18,14 @@
   "action": {
     "default_title": "Clip to linXiv",
     "default_popup": "popup/popup.html",
-    "default_icon": "icons/extension_logo.svg"
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
   },
   "browser_specific_settings": {
     "gecko": {
-      "id": "{3ead3bd7-e074-4537-9207-a3874daf4ba6}",
+      "id": "web-clipper@linxiv.app",
       "strict_min_version": "140.0",
       "data_collection_permissions": {
         "required": [
@@ -42,5 +47,8 @@
   "options_ui": {
     "page": "options/options.html",
     "open_in_tab": true
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'"
   }
 }

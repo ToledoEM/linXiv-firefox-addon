@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import { createBackend, DEFAULT_SETTINGS, DEFAULT_URLS } from "./backends/index.ts";
-import { originPattern } from "./backends/http.ts";
+import { originPattern, sendsTokenInClear } from "./backends/http.ts";
 import type { BackendKind, ProbeResult, Settings } from "./backends/types.ts";
 import { loadSettings, saveSettings } from "./settings.ts";
 
@@ -43,7 +43,7 @@ function Options() {
         const granted = await chrome.permissions.request({ origins: [originPattern(settings.baseUrl)] });
 
         if (!granted) {
-          setProbe({ ok: false, message: "Firefox needs permission to reach that address." });
+          setProbe({ ok: false, message: "The browser needs permission to reach that address." });
           return;
         }
       }
@@ -95,6 +95,11 @@ function Options() {
               placeholder={DEFAULT_URLS[settings.kind]}
               onChange={(event) => update({ baseUrl: event.target.value })}
             />
+            {sendsTokenInClear(settings.baseUrl) && (
+              <small className="warning">
+                This address uses http, so the token is sent unencrypted. Use https outside a trusted network.
+              </small>
+            )}
           </label>
 
           <label className="settings-field">
@@ -105,7 +110,7 @@ function Options() {
               value={settings.token}
               onChange={(event) => update({ token: event.target.value })}
             />
-            <small>The token is kept unencrypted in this Firefox profile.</small>
+            <small>The token is kept unencrypted in this browser profile.</small>
           </label>
 
           <div className="token-help">
